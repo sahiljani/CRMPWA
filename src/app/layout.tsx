@@ -25,7 +25,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning> {/* suppressHydrationWarning added as good practice */}
+    <html lang="en" className="dark" suppressHydrationWarning>
+      {/* Ensure no whitespace before body */}
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider> {/* Wrap children with AuthProvider */}
           {children}
