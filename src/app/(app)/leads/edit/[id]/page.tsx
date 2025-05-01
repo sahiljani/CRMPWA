@@ -10,6 +10,8 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'; // Keep Card for overall page structure
+
 
 // Define the type for the simplified data received from the form
 type SimplifiedLeadData = {
@@ -22,9 +24,9 @@ export default function EditLeadPage() {
   const router = useRouter();
   const params = useParams();
   const { toast } = useToast();
-  const [lead, setLead = useState<Lead | null>(null);
-  const [isLoading, setIsLoading = useState(true);
-  const [isSubmitting, setIsSubmitting = useState(false);
+  const [lead, setLead] = useState<Lead | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const leadId = params.id as string; // Get lead ID from route params
 
@@ -124,8 +126,8 @@ export default function EditLeadPage() {
 
 
   return (
-    <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-4 mb-4"> {/* Added margin-bottom */}
+    <div className="flex flex-col gap-6 max-w-2xl mx-auto"> {/* Center and constrain width */}
+        <div className="flex items-center gap-4 mb-4">
             <Link href="/leads" passHref legacyBehavior>
                 <Button variant="outline" size="icon" className="h-8 w-8 rounded-full">
                     <ArrowLeft className="h-4 w-4" />
@@ -134,13 +136,24 @@ export default function EditLeadPage() {
             </Link>
             <h1 className="text-xl md:text-2xl font-semibold">Edit Lead</h1>
       </div>
-      <LeadForm
-        initialData={lead}
-        onSubmit={handleSubmit}
-        isSubmitting={isSubmitting}
-        mode="edit"
-      />
+        {/* Use Card for the form section */}
+       <Card className="rounded-lg shadow-md">
+            <CardHeader>
+                <CardTitle>Edit Lead Details</CardTitle>
+                <CardDescription>Modify the lead's name or contact number below.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                 <LeadForm
+                    initialData={lead}
+                    onSubmit={handleSubmit}
+                    isSubmitting={isSubmitting}
+                    mode="edit"
+                 />
+            </CardContent>
+       </Card>
     </div>
   );
 }
 
+
+    

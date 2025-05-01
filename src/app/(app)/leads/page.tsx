@@ -1,10 +1,10 @@
 "use client";
 
-import type { Lead } from '@/services/borderiq-crm';
+import type { Lead, CreateLeadData } from '@/services/borderiq-crm'; // Added CreateLeadData
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
-import { getAllLeads, searchLeads, deleteLead, updateLead, leadStatuses } from '@/services/borderiq-crm'; // Import leadStatuses and updateLead
+import { getAllLeads, searchLeads, deleteLead, updateLead, leadStatuses, addLead } from '@/services/borderiq-crm'; // Import leadStatuses, updateLead, addLead
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -12,9 +12,17 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { PlusCircle, MoreHorizontal, Search, Trash2, Edit, Loader2, ChevronDown } from 'lucide-react'; // Added Check icon
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Card, CardContent } from "@/components/ui/card"; // Keep Card for structure
-import { Badge } from "@/components/ui/badge"; // Import Badge for status display
-import { cn } from '@/lib/utils'; // Import cn for conditional classes
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose, DialogFooter } from "@/components/ui/dialog"; // Import Dialog components
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { cn } from '@/lib/utils';
+import LeadForm from '@/components/lead-form'; // Import LeadForm
+
+// Define the type for the simplified data received from the form
+type SimplifiedLeadData = {
+    name: string;
+    phonenumber?: string;
+};
 
 
 export default function LeadsPage() {
@@ -25,6 +33,9 @@ export default function LeadsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isDeleting, setIsDeleting] = useState<string | null>(null); // Track deleting lead ID
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null); // Track updating lead ID
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false); // State for add lead modal
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false); // State for add lead submission
+
 
   const getStatusName = (statusId: string): string => {
     return leadStatuses.find(s => s.id === statusId)?.name || 'Unknown';
@@ -169,6 +180,44 @@ export default function LeadsPage() {
         }
     };
 
+  // --- Add Lead Handler (for the modal form) ---
+  const handleAddLead = async (data: SimplifiedLeadData) => {
+      if (!authToken) {
+          toast({ variant: "destructive", title: "Authentication Error", description: "You are not logged in." });
+          return;
+      };
+      setIsSubmittingAdd(true);
+
+      const payload: CreateLeadData = {
+          name: data.name,
+          phonenumber: data.phonenumber || undefined,
+          source: '5', // Default source: 'Other'
+          status: '1', // Default status: 'New'
+          assigned: '1', // Default assignee: 'Admin User'
+      };
+
+      try {
+          await addLead(authToken, payload);
+          toast({
+              title: "Lead Created",
+              description: `Lead "${data.name}" has been successfully added.`,
+          });
+          setIsAddModalOpen(false); // Close modal on success
+          await fetchLeads(); // Refetch leads to show the new one
+      } catch (error) {
+          console.error("Failed to add lead:", error);
+          toast({
+              variant: "destructive",
+              title: "Error Creating Lead",
+              description: error instanceof Error ? error.message : "Could not add the lead.",
+          });
+          // Keep modal open on error
+      } finally {
+          setIsSubmittingAdd(false);
+      }
+  };
+  // --- End of Add Lead Handler ---
+
 
   useEffect(() => {
     fetchLeads();
@@ -207,12 +256,37 @@ export default function LeadsPage() {
             <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
              { !isLoading && <p className="text-muted-foreground">Total Leads: {leads.length}</p> }
          </div>
-        <Link href="/leads/new" passHref>
-          {/* Increased button size */}
-          <Button size="lg" className="rounded-full h-12 px-6 text-base">
-            <PlusCircle className="mr-2 h-5 w-5" /> Add New Lead
-          </Button>
-        </Link>
+        {/* --- Dialog for Adding New Lead --- */}
+        <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+            <DialogTrigger asChild>
+                 <Button size="lg" className="rounded-full h-12 px-6 text-base">
+                    <PlusCircle className="mr-2 h-5 w-5" /> Add New Lead
+                 </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle>Add New Lead</DialogTitle>
+                    <DialogDescription>
+                        Enter the lead's name and contact number below. Click save when done.
+                    </DialogDescription>
+                </DialogHeader>
+                 {/* Embed the LeadForm here */}
+                <LeadForm
+                    onSubmit={handleAddLead}
+                    isSubmitting={isSubmittingAdd}
+                    mode="create"
+                    onCancel={() => setIsAddModalOpen(false)} // Add cancel handler
+                />
+                 {/* Footer can be removed if button is inside LeadForm */}
+                {/* <DialogFooter>
+                    <DialogClose asChild>
+                        <Button type="button" variant="secondary">Cancel</Button>
+                    </DialogClose>
+                     {/* Submit button is now part of LeadForm */}
+                {/* </DialogFooter> */}
+            </DialogContent>
+        </Dialog>
+         {/* --- End Dialog --- */}
       </div>
 
         <div className="relative">
@@ -233,10 +307,10 @@ export default function LeadsPage() {
             <Table>
             <TableHeader>
                 <TableRow>
-                <TableHead className="w-[40%]">Name</TableHead>
+                <TableHead className="w-[40%] pl-6">Name</TableHead> {/* Added padding */}
                 <TableHead className="w-[30%] hidden md:table-cell">Contact</TableHead>
                 <TableHead className="w-[20%]">Status</TableHead>
-                <TableHead className="w-[10%] text-right">
+                <TableHead className="w-[10%] text-right pr-6"> {/* Added padding */}
                     <span className="sr-only">Actions</span>
                 </TableHead>
                 </TableRow>
@@ -258,7 +332,7 @@ export default function LeadsPage() {
                 ) : (
                 filteredLeads.map((lead) => (
                     <TableRow key={lead.id}>
-                    <TableCell className="font-medium py-4 text-base"> {/* Increased text size & padding */}
+                    <TableCell className="font-medium py-4 text-base pl-6"> {/* Added padding */}
                         {lead.name || '-'}
                         {/* Show phone number on mobile under the name */}
                         {lead.phonenumber && (
@@ -277,17 +351,11 @@ export default function LeadsPage() {
                                     size="sm"
                                     className={cn(
                                         "flex items-center gap-2 px-3 py-1 h-auto text-sm rounded-md border justify-between w-full", // Full width on mobile, more padding
-                                        "md:w-auto md:rounded-full", // Auto width on medium screens and up, full round
+                                        "md:w-auto md:min-w-[120px] md:rounded-full", // Auto width on medium screens and up, full round, min-width
                                         isUpdatingStatus === lead.id ? "opacity-50 cursor-not-allowed" : "hover:bg-accent hover:text-accent-foreground",
-                                        // Use Badge variant colors for background/text
+                                         // Manually apply badge-like styles
                                         `bg-${getStatusBadgeVariant(lead.status)}/10 text-${getStatusBadgeVariant(lead.status)}-foreground border-${getStatusBadgeVariant(lead.status)}/40`
                                     )}
-                                    // Example direct style application (less ideal than Tailwind variants)
-                                    // style={{
-                                    //     borderColor: `hsl(var(--${getStatusBadgeVariant(lead.status)}-border, var(--border)))`,
-                                    //     backgroundColor: `hsla(var(--${getStatusBadgeVariant(lead.status)}-hsl, 0 0% 0%) / 0.1)`, // Use HSL with alpha
-                                    //     color: `hsl(var(--${getStatusBadgeVariant(lead.status)}-foreground, var(--foreground)))`,
-                                    // }}
                                 >
                                     {isUpdatingStatus === lead.id ? (
                                         <>
@@ -296,10 +364,9 @@ export default function LeadsPage() {
                                         </>
                                     ) : (
                                         <>
-                                        <Badge variant={getStatusBadgeVariant(lead.status)} className="pointer-events-none mr-1 !p-0 !bg-transparent !border-none !text-current"> {/* Hide badge styles, use button style */}
-                                            {getStatusName(lead.status)}
-                                        </Badge>
-                                        <ChevronDown className="h-4 w-4 opacity-60" />
+                                        {/* Don't use Badge component inside, apply styles to button */}
+                                        <span>{getStatusName(lead.status)}</span>
+                                        <ChevronDown className="h-4 w-4 opacity-60 ml-auto" /> {/* Push chevron right */}
                                         </>
                                     )}
                                 </Button>
@@ -317,7 +384,7 @@ export default function LeadsPage() {
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
-                    <TableCell className="py-4 text-right">
+                    <TableCell className="py-4 text-right pr-6"> {/* Added padding */}
                         <AlertDialog>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -406,3 +473,40 @@ export default function LeadsPage() {
 // bg-secondary/10 text-secondary-foreground border-secondary/40
 // etc.
 */
+
+// tailwind.config.js adjustments needed for custom status colors:
+/*
+module.exports = {
+  // ... other config
+  safelist: [ // Add this to ensure Tailwind generates the classes
+    // Add all potential combinations you use
+    'bg-default/10', 'text-default-foreground', 'border-default/40',
+    'bg-secondary/10', 'text-secondary-foreground', 'border-secondary/40',
+    'bg-destructive/10', 'text-destructive-foreground', 'border-destructive/40',
+    'bg-info/10', 'text-info-foreground', 'border-info/40',
+    'bg-success/10', 'text-success-foreground', 'border-success/40',
+    'bg-warning/10', 'text-warning-foreground', 'border-warning/40',
+    'bg-outline/10', 'text-outline-foreground', 'border-outline/40',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        // Define the base HSL colors if needed for Tailwind utilities
+        'default-foreground': 'hsl(var(--default-foreground))',
+        'secondary-foreground': 'hsl(var(--secondary-foreground))',
+        'destructive-foreground': 'hsl(var(--destructive-foreground))',
+        'info-foreground': 'hsl(var(--info-foreground))',
+        'success-foreground': 'hsl(var(--success-foreground))',
+        'warning-foreground': 'hsl(var(--warning-foreground))',
+        'outline-foreground': 'hsl(var(--outline-foreground))',
+         // Define base status colors if you want direct utilities like `bg-info`
+        info: 'hsl(var(--info-hsl))',
+        success: 'hsl(var(--success-hsl))',
+        warning: 'hsl(var(--warning-hsl))',
+      }
+    }
+  }
+}
+*/
+
+    
