@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Lead } from '@/services/borderiq-crm';
@@ -9,13 +10,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { PlusCircle, MoreHorizontal, Search, Trash2, Edit, Loader2, ArrowUpDown } from 'lucide-react';
+import { PlusCircle, MoreHorizontal, Search, Trash2, Edit, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Card } from "@/components/ui/card"; // Import Card component
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Keep Card for structure
 
-type SortKey = keyof Lead | '';
-type SortDirection = 'asc' | 'desc';
+// Remove SortKey and SortDirection types as we are only showing Name now
+// type SortKey = keyof Lead | '';
+// type SortDirection = 'asc' | 'desc';
 
 export default function LeadsPage() {
   const { authToken } = useAuth();
@@ -23,8 +25,9 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('dateadded'); // Default sort
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc'); // Default direction
+  // Remove sorting state
+  // const [sortKey, setSortKey] = useState<SortKey>('dateadded');
+  // const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [isDeleting, setIsDeleting] = useState<string | null>(null); // Track deleting lead ID
 
   const fetchLeads = async () => {
@@ -50,7 +53,6 @@ export default function LeadsPage() {
     setSearchTerm(term);
     setIsLoading(true);
     try {
-       // If search term is empty, fetch all leads again
        if (!term.trim()) {
             await fetchLeads();
         } else {
@@ -64,7 +66,6 @@ export default function LeadsPage() {
         title: "Error searching leads",
         description: error instanceof Error ? error.message : "Could not perform search.",
       });
-      // Optionally revert to all leads or show an empty state
       setLeads([]);
     } finally {
       setIsLoading(false);
@@ -74,7 +75,7 @@ export default function LeadsPage() {
 
   const handleDelete = async (id: string) => {
     if (!authToken) return;
-    setIsDeleting(id); // Indicate which lead is being deleted
+    setIsDeleting(id);
     try {
       await deleteLead(authToken, id);
       setLeads(prevLeads => prevLeads.filter(lead => lead.id !== id));
@@ -90,50 +91,39 @@ export default function LeadsPage() {
         description: error instanceof Error ? error.message : "Could not delete the lead.",
       });
     } finally {
-        setIsDeleting(null); // Reset deleting state
+        setIsDeleting(null);
     }
   };
 
   useEffect(() => {
     fetchLeads();
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authToken]); // Re-fetch if auth token changes
+  }, [authToken]);
 
 
-  const sortedLeads = useMemo(() => {
-    if (!sortKey) return leads;
+  // Filter leads based on search term client-side after fetch/initial load or after search API call
+   const filteredLeads = useMemo(() => {
+       if (!searchTerm) return leads;
+       return leads.filter(lead =>
+           lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           lead.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           lead.email?.toLowerCase().includes(searchTerm.toLowerCase())
+           // Add other fields to search if needed
+       );
+   }, [leads, searchTerm]);
 
-    return [...leads].sort((a, b) => {
-      const aValue = a[sortKey];
-      const bValue = b[sortKey];
+  // Remove sorting logic
+  // const sortedLeads = useMemo(() => { ... });
+  // const handleSort = (key: SortKey) => { ... };
 
-      // Handle potential null/undefined values
-      if (aValue == null && bValue == null) return 0;
-      if (aValue == null) return sortDirection === 'asc' ? -1 : 1;
-      if (bValue == null) return sortDirection === 'asc' ? 1 : -1;
-
-      // Basic comparison for strings and numbers
-      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [leads, sortKey, sortDirection]);
-
-  const handleSort = (key: SortKey) => {
-     if (!key) return;
-    if (sortKey === key) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortKey(key);
-      setSortDirection('asc');
-    }
-  };
-
-  // Debounce search input
+  // Debounce search input - Keep this
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      handleSearch(searchTerm);
-    }, 500); // 500ms delay
+      // We might not need handleSearch API call if filtering client-side,
+      // but let's keep it in case the API search is more performant for large datasets.
+      // If client-side filtering is preferred, remove the handleSearch call here.
+      // handleSearch(searchTerm); // Keep if API search is desired
+    }, 500);
 
     return () => clearTimeout(delayDebounceFn);
      // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,10 +132,14 @@ export default function LeadsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+         <div>
+            <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
+             { !isLoading && <p className="text-muted-foreground">Total Leads: {leads.length}</p> }
+         </div>
         <Link href="/leads/new" passHref>
-          <Button className="rounded-full">
+          {/* Increased button size */}
+          <Button size="lg" className="rounded-full h-12 px-6 text-base">
             <PlusCircle className="mr-2 h-5 w-5" /> Add New Lead
           </Button>
         </Link>
@@ -155,9 +149,9 @@ export default function LeadsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search leads by name, company, email..."
+            placeholder="Search leads by name..." // Simplified placeholder
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)} // Update search term directly
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10 pr-4 py-2 rounded-full border bg-background shadow-sm"
           />
         </div>
@@ -168,37 +162,9 @@ export default function LeadsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[150px] cursor-pointer hover:bg-muted/50" onClick={() => handleSort('name')}>
-                <div className="flex items-center gap-1">
-                    Name {sortKey === 'name' && <ArrowUpDown className="h-3 w-3" />}
-                </div>
-                </TableHead>
-              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('company')}>
-                 <div className="flex items-center gap-1">
-                    Company {sortKey === 'company' && <ArrowUpDown className="h-3 w-3" />}
-                 </div>
-                </TableHead>
-              <TableHead className="cursor-pointer hover:bg-muted/50" onClick={() => handleSort('status')}>
-                 <div className="flex items-center gap-1">
-                     Status {sortKey === 'status' && <ArrowUpDown className="h-3 w-3" />}
-                 </div>
-                </TableHead>
-              <TableHead className="hidden md:table-cell cursor-pointer hover:bg-muted/50" onClick={() => handleSort('source')}>
-                 <div className="flex items-center gap-1">
-                     Source {sortKey === 'source' && <ArrowUpDown className="h-3 w-3" />}
-                 </div>
-                </TableHead>
-              <TableHead className="hidden lg:table-cell cursor-pointer hover:bg-muted/50" onClick={() => handleSort('dateadded')}>
-                 <div className="flex items-center gap-1">
-                     Date Added {sortKey === 'dateadded' && <ArrowUpDown className="h-3 w-3" />}
-                 </div>
-                </TableHead>
-               <TableHead className="hidden md:table-cell cursor-pointer hover:bg-muted/50" onClick={() => handleSort('assigned')}>
-                   <div className="flex items-center gap-1">
-                       Assigned To {sortKey === 'assigned' && <ArrowUpDown className="h-3 w-3" />}
-                   </div>
-                </TableHead>
-              <TableHead>
+              {/* Simplified Header */}
+              <TableHead>Name</TableHead>
+              <TableHead className="w-[50px]">
                 <span className="sr-only">Actions</span>
               </TableHead>
             </TableRow>
@@ -206,33 +172,30 @@ export default function LeadsPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
+                {/* Adjusted colSpan */}
+                <TableCell colSpan={2} className="h-24 text-center">
                   <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
                   <p className="mt-2 text-muted-foreground">Loading leads...</p>
                 </TableCell>
               </TableRow>
-            ) : sortedLeads.length === 0 ? (
+            ) : filteredLeads.length === 0 ? ( // Use filteredLeads
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                  No leads found. {searchTerm ? 'Try adjusting your search.' : ''}
+                 {/* Adjusted colSpan */}
+                <TableCell colSpan={2} className="h-24 text-center text-muted-foreground">
+                  No leads found. {searchTerm ? 'Try adjusting your search.' : 'Add a new lead!'}
                 </TableCell>
               </TableRow>
             ) : (
-              sortedLeads.map((lead) => (
+               // Use filteredLeads
+              filteredLeads.map((lead) => (
                 <TableRow key={lead.id}>
-                  <TableCell className="font-medium">{lead.name || '-'}</TableCell>
-                  <TableCell>{lead.company || '-'}</TableCell>
-                  <TableCell>{lead.status || '-'}</TableCell> {/* TODO: Map status ID to name */}
-                  <TableCell className="hidden md:table-cell">{lead.source || '-'}</TableCell> {/* TODO: Map source ID to name */}
-                  <TableCell className="hidden lg:table-cell">
-                    {lead.dateadded ? new Date(lead.dateadded).toLocaleDateString() : '-'}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">{lead.assigned || '-'}</TableCell> {/* TODO: Map assignee ID to name */}
-                  <TableCell>
+                  {/* Simplified Row */}
+                  <TableCell className="font-medium py-3">{lead.name || '-'}</TableCell>
+                  <TableCell className="py-3">
                     <AlertDialog>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button aria-haspopup="true" size="icon" variant="ghost" disabled={isDeleting === lead.id}>
+                          <Button aria-haspopup="true" size="icon" variant="ghost" disabled={isDeleting === lead.id} className="h-8 w-8">
                             {isDeleting === lead.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
                             <span className="sr-only">Toggle menu</span>
                           </Button>

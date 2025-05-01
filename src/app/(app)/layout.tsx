@@ -1,13 +1,11 @@
+
 "use client";
 
 import type { ReactNode } from 'react';
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import { SidebarProvider, Sidebar, SidebarInset } from "@/components/ui/sidebar";
-import AppHeader from '@/components/app-header';
-import AppSidebar from '@/components/app-sidebar';
-import AuthSetup from '@/components/auth-setup'; // Import AuthSetup
+import BottomNav from '@/components/bottom-nav'; // Import BottomNav
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { isTokenSet } = useAuth();
@@ -29,16 +27,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
 
   return (
-    <SidebarProvider>
-      <Sidebar>
-        <AppSidebar />
-      </Sidebar>
-      <SidebarInset>
-        <AppHeader />
-        <main className="flex-1 p-4 md:p-6 lg:p-8">
+    <div className="flex flex-col min-h-screen">
+        {/* Main content takes up available space, with padding at the bottom to avoid overlapping with BottomNav */}
+        <main className="flex-1 p-4 md:p-6 lg:p-8 pb-20"> {/* Added pb-20 for bottom nav space */}
           {children}
         </main>
-      </SidebarInset>
-    </SidebarProvider>
+        {/* Bottom navigation */}
+        <BottomNav />
+    </div>
   );
 }
