@@ -1,5 +1,6 @@
-// Base URL for the BorderIQ CRM API
-const API_BASE_URL = 'https://crm.borderiq.org/api';
+// Use relative path for the Next.js API proxy route
+// This ensures requests go to our backend first, which then forwards to the CRM API.
+const API_BASE_URL = '/api/crm'; // Changed from direct CRM URL
 
 /**
  * Represents a lead in the BorderIQ CRM.
@@ -87,71 +88,78 @@ export interface Lead {
 
 /**
  * Represents the data required to create a new lead.
+ * Simplified to only include essential fields for the current UI.
  */
 export interface CreateLeadData {
-  source: string; // Mandatory
-  status: string; // Mandatory
   name: string; // Mandatory
-  assigned: string; // Mandatory
-  client_id?: string; // Optional
-  tags?: string; // Optional
-  contact?: string; // Optional
-  title?: string; // Optional
-  email?: string; // Optional
-  website?: string; // Optional
   phonenumber?: string; // Optional
-  company?: string; // Optional
-  address?: string; // Optional
-  city?: string; // Optional
-  zip?: string; // Optional
-  state?: string; // Optional
-  country?: string; // Optional
-  default_language?: string; // Optional
-  description?: string; // Optional
-  custom_contact_date?: string; // Optional - Note: API docs mention this, but it's unusual for create
-  contacted_today?: string; // Optional - Note: API docs mention this, but it's unusual for create
-  is_public?: string; // Optional
+  // Default values will be set when calling the API
+  source?: string; // Made optional, will default
+  status?: string; // Made optional, will default
+  assigned?: string; // Made optional, will default
+  // Other optional fields from original interface if needed later
+  // client_id?: string;
+  // tags?: string;
+  // contact?: string;
+  // title?: string;
+  // email?: string;
+  // website?: string;
+  // company?: string;
+  // address?: string;
+  // city?: string;
+  // zip?: string;
+  // state?: string;
+  // country?: string;
+  // default_language?: string;
+  // description?: string;
+  // custom_contact_date?: string;
+  // contacted_today?: string;
+  // is_public?: string;
 }
 
 /**
  * Represents the data required to update a lead.
- * Similar to CreateLeadData but might not require all mandatory fields
- * depending on API behavior (though docs say source, status, name, assigned are mandatory for update too).
+ * Simplified for current UI needs.
  */
 export interface UpdateLeadData {
-  source: string; // Mandatory per docs
-  status: string; // Mandatory per docs
-  name: string; // Mandatory per docs
-  assigned: string; // Mandatory per docs
-  client_id?: string; // Optional
-  tags?: string; // Optional
-  contact?: string; // Optional
-  title?: string; // Optional
-  email?: string; // Optional
-  website?: string; // Optional
-  phonenumber?: string; // Optional
-  company?: string; // Optional
-  address?: string; // Optional
-  city?: string; // Optional
-  zip?: string; // Optional
-  state?: string; // Optional
-  country?: string; // Optional
-  default_language?: string; // Optional
-  description?: string; // Optional
-  lastcontact?: string; // Optional - Specific to update
-  is_public?: string; // Optional
+  name: string; // Mandatory per docs, always included
+  phonenumber?: string; // Optional field to update
+  // Required by API for update, will be fetched and included
+  source: string;
+  status: string;
+  assigned: string;
+  // Other optional fields from original interface if needed later
+  // client_id?: string;
+  // tags?: string;
+  // contact?: string;
+  // title?: string;
+  // email?: string;
+  // website?: string;
+  // company?: string;
+  // address?: string;
+  // city?: string;
+  // zip?: string;
+  // state?: string;
+  // country?: string;
+  // default_language?: string;
+  // description?: string;
+  // lastcontact?: string;
+  // is_public?: string;
 }
 
-// Helper function for making API requests
+// Helper function for making API requests via the Next.js proxy
 async function fetchCrmApi<T>(
-  endpoint: string,
+  endpoint: string, // This will be the path *after* /api/crm/
   authToken: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  // The full URL now points to our local proxy route
+  const url = `${API_BASE_URL}${endpoint}`; // e.g., /api/crm/leads
+
+  // Headers sent *to the proxy route*
   const headers = {
-    'authtoken': authToken,
-    'Content-Type': 'application/json', // Assume JSON for POST/PUT
+    'authtoken': authToken, // Send the token for the proxy to use
+    'Content-Type': 'application/json',
     'Accept': 'application/json',
     ...options.headers,
   };
@@ -161,92 +169,107 @@ async function fetchCrmApi<T>(
   if (!response.ok) {
     let errorData;
     try {
-        errorData = await response.json();
+      errorData = await response.json();
     } catch (e) {
-        // If response is not JSON
-        errorData = { message: `HTTP error! status: ${response.status}` };
+      errorData = { message: `API request failed! status: ${response.status}` };
     }
-     // Use the message from the API error response if available
-    throw new Error(errorData?.message || `API request failed with status ${response.status}`);
+    // Throw error with message from proxy/API if available
+    throw new Error(errorData?.message || `API request via proxy failed with status ${response.status}`);
   }
 
-   // Handle cases where API returns 200 OK but indicates failure in the body
-  const data: any = await response.json();
-  if (data.status === false) {
-       throw new Error(data.message || 'API request failed.');
+  // Handle cases where API (via proxy) returns 200 OK but indicates failure in the body
+   const responseText = await response.text(); // Read response as text first
+   try {
+     const data: any = JSON.parse(responseText); // Try parsing as JSON
+     // Check for explicit failure status from the *actual* CRM API response structure
+     if (data.status === false) {
+       throw new Error(data.message || 'API operation failed.');
+     }
+     return data as T;
+   } catch (e) {
+        // If it's not JSON or doesn't have status, assume success if response.ok was true
+        // Handle non-JSON success responses if necessary, or re-throw if parsing failed unexpectedly
+        if (e instanceof SyntaxError && response.ok) {
+             // If it was OK but not JSON, maybe return the text? Or handle as specific case.
+             // For now, let's assume JSON is expected for success data.
+             console.warn("Received non-JSON response for supposedly successful request:", responseText);
+             // Return a generic success or handle based on content-type if needed
+             return {} as T; // Or adjust based on expected non-JSON success
+        }
+        // Re-throw other errors (like the explicit status:false error)
+        throw e;
    }
-
-
-  // For GET requests returning lead lists or single leads, the data might be directly the lead/leads array
-  // For POST/PUT/DELETE returning status messages, we check the 'status' field
-  // Adjust based on actual API response structure if needed
-  return data as T;
-
 }
 
 /**
- * Asynchronously adds a new lead to the BorderIQ CRM.
+ * Asynchronously adds a new lead to the BorderIQ CRM via the proxy.
  *
  * @param authToken The authentication token.
- * @param leadData The data for the new lead.
+ * @param leadData The data for the new lead (only name and phonenumber needed from UI).
  * @returns A promise that resolves to the success message from the API.
  */
-export async function addLead(authToken: string, leadData: CreateLeadData): Promise<{ status: boolean; message: string }> {
-    console.log("Adding lead with data:", leadData);
-    return fetchCrmApi<{ status: boolean; message: string }>(`/leads`, authToken, {
+export async function addLead(authToken: string, leadData: CreateLeadData): Promise<{ status: boolean; message: string; id?: string }> {
+    console.log("Adding lead via proxy with data:", leadData);
+    // Add default required fields before sending
+    const fullLeadData: any = {
+        ...leadData,
+        source: leadData.source || '5', // Default 'Other'
+        status: leadData.status || '1', // Default 'New'
+        assigned: leadData.assigned || '1', // Default 'Admin User'
+    };
+    // The endpoint path should NOT start with a slash here as API_BASE_URL doesn't have a trailing one
+    return fetchCrmApi<{ status: boolean; message: string; id?: string }>(`/leads`, authToken, {
         method: 'POST',
-        body: JSON.stringify(leadData),
+        body: JSON.stringify(fullLeadData),
     });
 }
 
+
 /**
- * Asynchronously retrieves lead information from the BorderIQ CRM.
- * The API docs suggest the response body directly contains the lead object upon success.
+ * Asynchronously retrieves lead information via the proxy.
  *
  * @param authToken The authentication token.
  * @param id The unique identifier of the lead to retrieve.
- * @returns A promise that resolves to a Lead object or null if not found (API might return 404 handled by fetchCrmApi).
+ * @returns A promise that resolves to a Lead object.
  */
 export async function getLead(authToken: string, id: string): Promise<Lead> {
-    console.log("Retrieving lead with ID:", id);
-    // The API returns the lead object directly, not nested under a "Lead" key based on example.
+    console.log("Retrieving lead via proxy with ID:", id);
     return fetchCrmApi<Lead>(`/leads/${id}`, authToken, { method: 'GET' });
 }
 
 
 /**
- * Asynchronously retrieves all leads from the BorderIQ CRM.
- * The API docs suggest the response body is an array of lead objects.
+ * Asynchronously retrieves all leads via the proxy.
+ * **Important:** The API endpoint used in the working curl command is `/leadsi/leads`.
+ * Update the endpoint here to match.
  *
  * @param authToken The authentication token.
  * @returns A promise that resolves to an array of Lead objects.
  */
 export async function getAllLeads(authToken: string): Promise<Lead[]> {
-    console.log("Retrieving all leads.");
-    // The API returns an array of leads directly.
-    return fetchCrmApi<Lead[]>(`/leads`, authToken, { method: 'GET' });
+    console.log("Retrieving all leads via proxy.");
+    // Corrected endpoint based on working curl command
+    return fetchCrmApi<Lead[]>(`/leadsi/leads`, authToken, { method: 'GET' });
 }
 
 
 /**
- * Asynchronously searches for leads in the BorderIQ CRM.
- * The API docs suggest the response body is an array of matching lead objects.
+ * Asynchronously searches for leads via the proxy.
  *
  * @param authToken The authentication token.
  * @param keysearch The search keywords.
  * @returns A promise that resolves to an array of Lead objects.
  */
 export async function searchLeads(authToken: string, keysearch: string): Promise<Lead[]> {
-    console.log("Searching leads with keyword:", keysearch);
-     // Encode the search term to handle special characters in the URL
+    console.log("Searching leads via proxy with keyword:", keysearch);
     const encodedKeysearch = encodeURIComponent(keysearch);
-    // The API returns an array of leads directly.
+    // Assuming the search endpoint follows the pattern, adjust if needed
     return fetchCrmApi<Lead[]>(`/leads/search/${encodedKeysearch}`, authToken, { method: 'GET' });
 }
 
 
 /**
- * Asynchronously updates a lead in the BorderIQ CRM.
+ * Asynchronously updates a lead via the proxy.
  *
  * @param authToken The authentication token.
  * @param id The unique identifier of the lead to update.
@@ -254,38 +277,38 @@ export async function searchLeads(authToken: string, keysearch: string): Promise
  * @returns A promise that resolves to the success message from the API.
  */
 export async function updateLead(authToken: string, id: string, leadData: UpdateLeadData): Promise<{ status: boolean; message: string }> {
-    console.log("Updating lead with ID:", id, "and data:", leadData);
+    console.log("Updating lead via proxy with ID:", id, "and data:", leadData);
+     // Ensure all mandatory fields for update are included
+    const fullUpdateData: UpdateLeadData = {
+        name: leadData.name,
+        phonenumber: leadData.phonenumber,
+        source: leadData.source, // Already included in the type definition
+        status: leadData.status, // Already included in the type definition
+        assigned: leadData.assigned, // Already included in the type definition
+        // Include other optional fields if they exist in leadData
+        // ... (spread other potential fields from leadData if necessary)
+    };
     return fetchCrmApi<{ status: boolean; message: string }>(`/leads/${id}`, authToken, {
         method: 'PUT',
-        body: JSON.stringify(leadData),
+        body: JSON.stringify(fullUpdateData), // Send the complete required data
     });
 }
 
 /**
- * Asynchronously deletes a lead from the BorderIQ CRM.
+ * Asynchronously deletes a lead via the proxy.
  *
  * @param authToken The authentication token.
  * @param id The unique identifier of the lead to delete.
  * @returns A promise that resolves to the success message from the API.
  */
 export async function deleteLead(authToken: string, id: string): Promise<{ status: boolean; message: string }> {
-    console.log("Deleting lead with ID:", id);
+    console.log("Deleting lead via proxy with ID:", id);
     return fetchCrmApi<{ status: boolean; message: string }>(`/delete/leads/${id}`, authToken, {
         method: 'DELETE',
     });
 }
 
-// --- Helper Data for Forms (Example - Fetch or define actual sources/statuses) ---
-
-// You should fetch these from your API or define them statically if they don't change often.
-export const leadSources = [
-    { id: '1', name: 'Website' },
-    { id: '2', name: 'Referral' },
-    { id: '3', name: 'Cold Call' },
-    { id: '4', name: 'Advertisement' },
-    { id: '5', name: 'Other' },
-     // Add other sources based on your CRM setup
-];
+// --- Helper Data (Keep as is) ---
 
 export const leadStatuses = [
     { id: '1', name: 'New' },
@@ -295,21 +318,9 @@ export const leadStatuses = [
     { id: '5', name: 'Negotiation' },
     { id: '6', name: 'Won' },
     { id: '7', name: 'Lost' },
-     // Add other statuses based on your CRM setup
 ];
 
-// Example: Fetch actual users/assignees from your system
-export const assignees = [
-    { id: '1', name: 'Admin User' },
-    { id: '5', name: 'Sales Rep 1' },
-    { id: '8', name: 'Sales Rep 2' },
-    // Add other users
-];
-
-// Example: Fetch actual countries or use a standard list
-export const countries = [
-    { id: '243', name: 'United Kingdom' },
-    { id: '236', name: 'United States' },
-    { id: '38', name: 'Canada' },
-     // Add more countries...
-];
+// Default values used in addLead if not provided
+export const defaultSourceId = '5'; // 'Other'
+export const defaultStatusId = '1'; // 'New'
+export const defaultAssigneeId = '1'; // 'Admin User'

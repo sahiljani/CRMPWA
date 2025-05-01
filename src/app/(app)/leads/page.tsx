@@ -1,21 +1,19 @@
 "use client";
 
-import type { Lead, CreateLeadData } from '@/services/borderiq-crm'; // Added CreateLeadData
+import type { Lead, CreateLeadData, UpdateLeadData } from '@/services/borderiq-crm';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/auth-context';
-import { getAllLeads, searchLeads, deleteLead, updateLead, leadStatuses, addLead } from '@/services/borderiq-crm'; // Import leadStatuses, updateLead, addLead
+import { getAllLeads, searchLeads, deleteLead, updateLead, leadStatuses, addLead, defaultAssigneeId, defaultSourceId, defaultStatusId } from '@/services/borderiq-crm'; // Import leadStatuses, updateLead, addLead and defaults
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuRadioGroup, DropdownMenuRadioItem } from '@/components/ui/dropdown-menu';
-import { PlusCircle, MoreHorizontal, Search, Trash2, Edit, Loader2, ChevronDown } from 'lucide-react'; // Added Check icon
+import { PlusCircle, MoreHorizontal, Search, Trash2, Edit, Loader2, ChevronDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose, DialogFooter } from "@/components/ui/dialog"; // Import Dialog components
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { cn } from '@/lib/utils';
 import LeadForm from '@/components/lead-form'; // Import LeadForm
 
 // Define the type for the simplified data received from the form
@@ -41,17 +39,17 @@ export default function LeadsPage() {
     return leadStatuses.find(s => s.id === statusId)?.name || 'Unknown';
   };
 
-  // Function to get badge variant based on status name (customize as needed)
-  const getStatusBadgeVariant = (statusId: string): "default" | "secondary" | "destructive" | "outline" | "info" | "success" | "warning" => {
+  // Function to get style variant based on status name
+  const getStatusVariant = (statusId: string): string => {
       const statusName = getStatusName(statusId).toLowerCase();
-      if (statusName === 'won') return 'success'; // Green for 'Won'
-      if (statusName === 'lost') return 'destructive'; // Red for 'Lost'
-      if (statusName === 'new') return 'secondary'; // Grey for 'New'
-      if (statusName === 'contacted') return 'info'; // Blue for 'Contacted'
-      if (statusName === 'qualified') return 'default'; // Primary (Orange) for 'Qualified'
-      if (statusName === 'proposal sent') return 'info'; // Blue for 'Proposal Sent'
-      if (statusName === 'negotiation') return 'warning'; // Yellow/Amber for 'Negotiation'
-      return 'outline'; // Default outline for others
+      if (statusName === 'won') return 'bg-green-100 text-green-800 border-green-300';
+      if (statusName === 'lost') return 'bg-red-100 text-red-800 border-red-300';
+      if (statusName === 'new') return 'bg-gray-100 text-gray-800 border-gray-300';
+      if (statusName === 'contacted') return 'bg-blue-100 text-blue-800 border-blue-300';
+      if (statusName === 'qualified') return 'bg-yellow-100 text-yellow-800 border-yellow-300'; // Example yellow
+      if (statusName === 'proposal sent') return 'bg-indigo-100 text-indigo-800 border-indigo-300'; // Example indigo
+      if (statusName === 'negotiation') return 'bg-orange-100 text-orange-800 border-orange-300'; // Example orange
+      return 'bg-white text-gray-600 border-gray-300'; // Default outline style
   };
 
 
@@ -138,21 +136,27 @@ export default function LeadsPage() {
    const handleStatusUpdate = async (leadId: string, newStatusId: string) => {
         if (!authToken) return;
         const leadToUpdate = leads.find(l => l.id === leadId);
-        if (!leadToUpdate) return;
+        if (!leadToUpdate) {
+             toast({ variant: "destructive", title: "Error", description: "Lead not found." });
+             return;
+        };
 
         setIsUpdatingStatus(leadId);
 
-        // Prepare the minimal data needed for the update API call
-        const updateData = {
+        // Prepare the data needed for the update API call
+        // Include all fields required by the API's PUT endpoint
+        const updateData: UpdateLeadData = {
             name: leadToUpdate.name, // Keep existing name
-            source: leadToUpdate.source, // Keep existing source
-            assigned: leadToUpdate.assigned, // Keep existing assignee
+            phonenumber: leadToUpdate.phonenumber || undefined, // Keep existing phone or undefined
+            source: leadToUpdate.source || defaultSourceId, // Use existing source or default
+            assigned: leadToUpdate.assigned || defaultAssigneeId, // Use existing assignee or default
             status: newStatusId, // Set the new status
-            // Include other fields from leadToUpdate if the API requires them,
-            // even if they are not mandatory for *this* specific update action.
-            phonenumber: leadToUpdate.phonenumber || undefined,
-            company: leadToUpdate.company || undefined,
-            // Add other fields as necessary based on the UpdateLeadData interface and API requirements
+            // Add other fields from leadToUpdate if the API requires them,
+            // Ensure they are part of the UpdateLeadData interface.
+            // Example:
+            // company: leadToUpdate.company || undefined,
+            // address: leadToUpdate.address || undefined,
+            // ... etc.
         };
 
 
@@ -188,22 +192,31 @@ export default function LeadsPage() {
       };
       setIsSubmittingAdd(true);
 
+      // Only pass name and phonenumber to the addLead function
+      // Defaults for source, status, assigned are handled within addLead service function
       const payload: CreateLeadData = {
           name: data.name,
           phonenumber: data.phonenumber || undefined,
-          source: '5', // Default source: 'Other'
-          status: '1', // Default status: 'New'
-          assigned: '1', // Default assignee: 'Admin User'
+           // source, status, assigned will use defaults in the service
       };
 
       try {
-          await addLead(authToken, payload);
-          toast({
-              title: "Lead Created",
-              description: `Lead "${data.name}" has been successfully added.`,
-          });
-          setIsAddModalOpen(false); // Close modal on success
-          await fetchLeads(); // Refetch leads to show the new one
+          const result = await addLead(authToken, payload);
+          if (result.status) { // Check for success from API response
+              toast({
+                  title: "Lead Created",
+                  description: `Lead "${data.name}" has been successfully added.`,
+              });
+              setIsAddModalOpen(false); // Close modal on success
+              await fetchLeads(); // Refetch leads to show the new one
+          } else {
+                // Handle API returning success=false
+                 toast({
+                    variant: "destructive",
+                    title: "Error Creating Lead",
+                    description: result.message || "Could not add the lead.",
+                });
+          }
       } catch (error) {
           console.error("Failed to add lead:", error);
           toast({
@@ -227,26 +240,24 @@ export default function LeadsPage() {
   // Filter leads based on search term client-side after fetch/initial load or after search API call
    const filteredLeads = useMemo(() => {
        if (!searchTerm) return leads;
+       // Assuming the search API call already filtered,
+       // but if doing client-side filtering after initial load:
        return leads.filter(lead =>
-           lead.name?.toLowerCase().includes(searchTerm.toLowerCase())
+           lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           lead.phonenumber?.includes(searchTerm) // Optional: search by phone too
        );
    }, [leads, searchTerm]);
 
 
-  // Debounce search input
+  // Debounce search input - Trigger API search
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-        // Only trigger search if searchTerm is not empty or fetch all if search term is cleared
-        if (searchTerm.trim()) {
-            handleSearch(searchTerm);
-        } else if (!isLoading && !searchTerm) { // Fetch all only if not loading and search is cleared
-            fetchLeads();
-        }
+        handleSearch(searchTerm); // Call API search directly
     }, 500); // 500ms delay
 
     return () => clearTimeout(delayDebounceFn);
      // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [searchTerm, authToken]); // Removed fetchLeads dependency to avoid loop when search term is empty
+}, [searchTerm, authToken]); // Removed fetchLeads
 
 
   return (
@@ -267,7 +278,7 @@ export default function LeadsPage() {
                 <DialogHeader>
                     <DialogTitle>Add New Lead</DialogTitle>
                     <DialogDescription>
-                        Enter the lead's name and contact number below. Click save when done.
+                        Enter the lead's name and contact number.
                     </DialogDescription>
                 </DialogHeader>
                  {/* Embed the LeadForm here */}
@@ -277,13 +288,6 @@ export default function LeadsPage() {
                     mode="create"
                     onCancel={() => setIsAddModalOpen(false)} // Add cancel handler
                 />
-                 {/* Footer can be removed if button is inside LeadForm */}
-                {/* <DialogFooter>
-                    <DialogClose asChild>
-                        <Button type="button" variant="secondary">Cancel</Button>
-                    </DialogClose>
-                     {/* Submit button is now part of LeadForm */}
-                {/* </DialogFooter> */}
             </DialogContent>
         </Dialog>
          {/* --- End Dialog --- */}
@@ -293,10 +297,10 @@ export default function LeadsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search leads by name..." // Simplified placeholder
+            placeholder="Search leads by name or phone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 rounded-full border bg-background shadow-sm text-base" // Increased text size
+            className="pl-10 pr-4 py-2 rounded-full border bg-background shadow-sm text-base"
           />
         </div>
 
@@ -307,10 +311,10 @@ export default function LeadsPage() {
             <Table>
             <TableHeader>
                 <TableRow>
-                <TableHead className="w-[40%] pl-6">Name</TableHead> {/* Added padding */}
+                <TableHead className="w-[40%] pl-6">Name</TableHead> {/* Increased width */}
                 <TableHead className="w-[30%] hidden md:table-cell">Contact</TableHead>
                 <TableHead className="w-[20%]">Status</TableHead>
-                <TableHead className="w-[10%] text-right pr-6"> {/* Added padding */}
+                <TableHead className="w-[10%] text-right pr-6">
                     <span className="sr-only">Actions</span>
                 </TableHead>
                 </TableRow>
@@ -332,14 +336,14 @@ export default function LeadsPage() {
                 ) : (
                 filteredLeads.map((lead) => (
                     <TableRow key={lead.id}>
-                    <TableCell className="font-medium py-4 text-base pl-6"> {/* Added padding */}
+                    <TableCell className="font-medium py-4 text-base pl-6">
                         {lead.name || '-'}
                         {/* Show phone number on mobile under the name */}
                         {lead.phonenumber && (
                             <p className="text-sm text-muted-foreground mt-1 md:hidden">{lead.phonenumber}</p>
                         )}
                     </TableCell>
-                     <TableCell className="py-4 text-muted-foreground hidden md:table-cell">
+                     <TableCell className="py-4 text-muted-foreground hidden md:table-cell text-base">
                          {lead.phonenumber || '-'}
                      </TableCell>
                     <TableCell className="py-4">
@@ -349,13 +353,7 @@ export default function LeadsPage() {
                                 <Button
                                     variant="outline" // Use outline variant for the button
                                     size="sm"
-                                    className={cn(
-                                        "flex items-center gap-2 px-3 py-1 h-auto text-sm rounded-md border justify-between w-full", // Full width on mobile, more padding
-                                        "md:w-auto md:min-w-[120px] md:rounded-full", // Auto width on medium screens and up, full round, min-width
-                                        isUpdatingStatus === lead.id ? "opacity-50 cursor-not-allowed" : "hover:bg-accent hover:text-accent-foreground",
-                                         // Manually apply badge-like styles
-                                        `bg-${getStatusBadgeVariant(lead.status)}/10 text-${getStatusBadgeVariant(lead.status)}-foreground border-${getStatusBadgeVariant(lead.status)}/40`
-                                    )}
+                                    className={`flex items-center gap-2 px-3 py-1 h-auto text-sm rounded-md border justify-between w-full md:w-auto md:min-w-[120px] ${getStatusVariant(lead.status)} ${isUpdatingStatus === lead.id ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`} // Apply dynamic styles
                                 >
                                     {isUpdatingStatus === lead.id ? (
                                         <>
@@ -364,9 +362,8 @@ export default function LeadsPage() {
                                         </>
                                     ) : (
                                         <>
-                                        {/* Don't use Badge component inside, apply styles to button */}
-                                        <span>{getStatusName(lead.status)}</span>
-                                        <ChevronDown className="h-4 w-4 opacity-60 ml-auto" /> {/* Push chevron right */}
+                                        <span className="font-medium">{getStatusName(lead.status)}</span>
+                                        <ChevronDown className="h-4 w-4 opacity-60 ml-auto" />
                                         </>
                                     )}
                                 </Button>
@@ -384,7 +381,7 @@ export default function LeadsPage() {
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
-                    <TableCell className="py-4 text-right pr-6"> {/* Added padding */}
+                    <TableCell className="py-4 text-right pr-6">
                         <AlertDialog>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -396,11 +393,12 @@ export default function LeadsPage() {
                             <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <Link href={`/leads/edit/${lead.id}`} passHref legacyBehavior>
+                            {/* Simplified: Removing Edit link as per request */}
+                            {/* <Link href={`/leads/edit/${lead.id}`} passHref legacyBehavior>
                                 <DropdownMenuItem className="text-base cursor-pointer">
                                     <Edit className="mr-2 h-4 w-4" /> Edit
                                 </DropdownMenuItem>
-                            </Link>
+                            </Link> */}
                             <AlertDialogTrigger asChild>
                                 <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10 text-base cursor-pointer">
                                 <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -439,74 +437,3 @@ export default function LeadsPage() {
     </div>
   );
 }
-
-
-// --- Add HSL variables for badge colors to globals.css ---
-/*
-:root {
-  // ... other variables
-  --default-hsl: var(--primary-hsl); // Assuming primary is orange (e.g., 35 100% 64%)
-  --secondary-hsl: 240 4.8% 50%; // Muted Grey HSL
-  --destructive-hsl: 4 90% 58%; // Red HSL
-  --info-hsl: 210 90% 55%; // Blue HSL
-  --success-hsl: 142 76% 36%; // Green HSL
-  --warning-hsl: 40 90% 55%; // Amber/Yellow HSL
-  --outline-hsl: var(--foreground-hsl); // Use foreground color HSL
-
-  // Define foregrounds for each (can adjust lightness/darkness)
-  --default-foreground: hsl(var(--primary-foreground-hsl, 35 100% 10%));
-  --secondary-foreground: hsl(0 0% 98%); // Light for dark grey bg
-  --destructive-foreground: hsl(0 0% 98%); // Light for red bg
-  --info-foreground: hsl(0 0% 98%); // Light for blue bg
-  --success-foreground: hsl(0 0% 98%); // Light for green bg
-  --warning-foreground: hsl(40 100% 10%); // Dark for yellow bg
-  --outline-foreground: hsl(var(--foreground-hsl));
-}
-.dark {
-  // Adjust foregrounds for dark mode if needed
-  --secondary-foreground: hsl(0 0% 98%);
-  // ... other dark mode adjustments
-}
-
-// Then use utility classes in Tailwind (requires setup in tailwind.config.js):
-// bg-default/10 text-default-foreground border-default/40
-// bg-secondary/10 text-secondary-foreground border-secondary/40
-// etc.
-*/
-
-// tailwind.config.js adjustments needed for custom status colors:
-/*
-module.exports = {
-  // ... other config
-  safelist: [ // Add this to ensure Tailwind generates the classes
-    // Add all potential combinations you use
-    'bg-default/10', 'text-default-foreground', 'border-default/40',
-    'bg-secondary/10', 'text-secondary-foreground', 'border-secondary/40',
-    'bg-destructive/10', 'text-destructive-foreground', 'border-destructive/40',
-    'bg-info/10', 'text-info-foreground', 'border-info/40',
-    'bg-success/10', 'text-success-foreground', 'border-success/40',
-    'bg-warning/10', 'text-warning-foreground', 'border-warning/40',
-    'bg-outline/10', 'text-outline-foreground', 'border-outline/40',
-  ],
-  theme: {
-    extend: {
-      colors: {
-        // Define the base HSL colors if needed for Tailwind utilities
-        'default-foreground': 'hsl(var(--default-foreground))',
-        'secondary-foreground': 'hsl(var(--secondary-foreground))',
-        'destructive-foreground': 'hsl(var(--destructive-foreground))',
-        'info-foreground': 'hsl(var(--info-foreground))',
-        'success-foreground': 'hsl(var(--success-foreground))',
-        'warning-foreground': 'hsl(var(--warning-foreground))',
-        'outline-foreground': 'hsl(var(--outline-foreground))',
-         // Define base status colors if you want direct utilities like `bg-info`
-        info: 'hsl(var(--info-hsl))',
-        success: 'hsl(var(--success-hsl))',
-        warning: 'hsl(var(--warning-hsl))',
-      }
-    }
-  }
-}
-*/
-
-    
