@@ -26,7 +26,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning> {/* suppressHydrationWarning added as good practice */}
-      {/* Ensure no whitespace here */}
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider> {/* Wrap children with AuthProvider */}
           {children}
