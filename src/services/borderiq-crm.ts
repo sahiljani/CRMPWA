@@ -1,6 +1,10 @@
 // Use relative path for the Next.js API proxy route
 // This ensures requests go to our backend first, which then forwards to the CRM API.
-const API_BASE_URL = '/api/crm'; // Changed from direct CRM URL
+// const API_BASE_URL = '/api/crm'; // Using proxy
+
+// Reverted to direct API URL based on user feedback and CORS issues with proxy setup
+const API_BASE_URL = 'https://crm.borderiq.org/api';
+
 
 /**
  * Represents a lead in the BorderIQ CRM.
@@ -97,24 +101,6 @@ export interface CreateLeadData {
   source?: string; // Made optional, will default
   status?: string; // Made optional, will default
   assigned?: string; // Made optional, will default
-  // Other optional fields from original interface if needed later
-  // client_id?: string;
-  // tags?: string;
-  // contact?: string;
-  // title?: string;
-  // email?: string;
-  // website?: string;
-  // company?: string;
-  // address?: string;
-  // city?: string;
-  // zip?: string;
-  // state?: string;
-  // country?: string;
-  // default_language?: string;
-  // description?: string;
-  // custom_contact_date?: string;
-  // contacted_today?: string;
-  // is_public?: string;
 }
 
 /**
@@ -128,190 +114,12 @@ export interface UpdateLeadData {
   source: string;
   status: string;
   assigned: string;
-  // Other optional fields from original interface if needed later
-  // client_id?: string;
-  // tags?: string;
-  // contact?: string;
-  // title?: string;
-  // email?: string;
-  // website?: string;
-  // company?: string;
-  // address?: string;
-  // city?: string;
-  // zip?: string;
-  // state?: string;
-  // country?: string;
-  // default_language?: string;
-  // description?: string;
-  // lastcontact?: string;
-  // is_public?: string;
-}
-
-// Helper function for making API requests via the Next.js proxy
-async function fetchCrmApi<T>(
-  endpoint: string, // This will be the path *after* /api/crm/
-  authToken: string,
-  options: RequestInit = {}
-): Promise<T> {
-  // The full URL now points to our local proxy route
-  const url = `${API_BASE_URL}${endpoint}`; // e.g., /api/crm/leads
-
-  // Headers sent *to the proxy route*
-  const headers = {
-    'authtoken': authToken, // Send the token for the proxy to use
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    ...options.headers,
-  };
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (!response.ok) {
-    let errorData;
-    try {
-      errorData = await response.json();
-    } catch (e) {
-      errorData = { message: `API request failed! status: ${response.status}` };
-    }
-    // Throw error with message from proxy/API if available
-    throw new Error(errorData?.message || `API request via proxy failed with status ${response.status}`);
-  }
-
-  // Handle cases where API (via proxy) returns 200 OK but indicates failure in the body
-   const responseText = await response.text(); // Read response as text first
-   try {
-     const data: any = JSON.parse(responseText); // Try parsing as JSON
-     // Check for explicit failure status from the *actual* CRM API response structure
-     if (data.status === false) {
-       throw new Error(data.message || 'API operation failed.');
-     }
-     return data as T;
-   } catch (e) {
-        // If it's not JSON or doesn't have status, assume success if response.ok was true
-        // Handle non-JSON success responses if necessary, or re-throw if parsing failed unexpectedly
-        if (e instanceof SyntaxError && response.ok) {
-             // If it was OK but not JSON, maybe return the text? Or handle as specific case.
-             // For now, let's assume JSON is expected for success data.
-             console.warn("Received non-JSON response for supposedly successful request:", responseText);
-             // Return a generic success or handle based on content-type if needed
-             return {} as T; // Or adjust based on expected non-JSON success
-        }
-        // Re-throw other errors (like the explicit status:false error)
-        throw e;
-   }
-}
-
-/**
- * Asynchronously adds a new lead to the BorderIQ CRM via the proxy.
- *
- * @param authToken The authentication token.
- * @param leadData The data for the new lead (only name and phonenumber needed from UI).
- * @returns A promise that resolves to the success message from the API.
- */
-export async function addLead(authToken: string, leadData: CreateLeadData): Promise<{ status: boolean; message: string; id?: string }> {
-    console.log("Adding lead via proxy with data:", leadData);
-    // Add default required fields before sending
-    const fullLeadData: any = {
-        ...leadData,
-        source: leadData.source || '5', // Default 'Other'
-        status: leadData.status || '1', // Default 'New'
-        assigned: leadData.assigned || '1', // Default 'Admin User'
-    };
-    // The endpoint path should NOT start with a slash here as API_BASE_URL doesn't have a trailing one
-    return fetchCrmApi<{ status: boolean; message: string; id?: string }>(`/leads`, authToken, {
-        method: 'POST',
-        body: JSON.stringify(fullLeadData),
-    });
-}
-
-
-/**
- * Asynchronously retrieves lead information via the proxy.
- *
- * @param authToken The authentication token.
- * @param id The unique identifier of the lead to retrieve.
- * @returns A promise that resolves to a Lead object.
- */
-export async function getLead(authToken: string, id: string): Promise<Lead> {
-    console.log("Retrieving lead via proxy with ID:", id);
-    return fetchCrmApi<Lead>(`/leads/${id}`, authToken, { method: 'GET' });
-}
-
-
-/**
- * Asynchronously retrieves all leads via the proxy.
- * **Important:** The API endpoint used in the working curl command is `/leadsi/leads`.
- * Update the endpoint here to match.
- *
- * @param authToken The authentication token.
- * @returns A promise that resolves to an array of Lead objects.
- */
-export async function getAllLeads(authToken: string): Promise<Lead[]> {
-    console.log("Retrieving all leads via proxy.");
-    // Corrected endpoint based on working curl command
-    return fetchCrmApi<Lead[]>(`/leadsi/leads`, authToken, { method: 'GET' });
-}
-
-
-/**
- * Asynchronously searches for leads via the proxy.
- *
- * @param authToken The authentication token.
- * @param keysearch The search keywords.
- * @returns A promise that resolves to an array of Lead objects.
- */
-export async function searchLeads(authToken: string, keysearch: string): Promise<Lead[]> {
-    console.log("Searching leads via proxy with keyword:", keysearch);
-    const encodedKeysearch = encodeURIComponent(keysearch);
-    // Assuming the search endpoint follows the pattern, adjust if needed
-    return fetchCrmApi<Lead[]>(`/leads/search/${encodedKeysearch}`, authToken, { method: 'GET' });
-}
-
-
-/**
- * Asynchronously updates a lead via the proxy.
- *
- * @param authToken The authentication token.
- * @param id The unique identifier of the lead to update.
- * @param leadData The data to update for the lead.
- * @returns A promise that resolves to the success message from the API.
- */
-export async function updateLead(authToken: string, id: string, leadData: UpdateLeadData): Promise<{ status: boolean; message: string }> {
-    console.log("Updating lead via proxy with ID:", id, "and data:", leadData);
-     // Ensure all mandatory fields for update are included
-    const fullUpdateData: UpdateLeadData = {
-        name: leadData.name,
-        phonenumber: leadData.phonenumber,
-        source: leadData.source, // Already included in the type definition
-        status: leadData.status, // Already included in the type definition
-        assigned: leadData.assigned, // Already included in the type definition
-        // Include other optional fields if they exist in leadData
-        // ... (spread other potential fields from leadData if necessary)
-    };
-    return fetchCrmApi<{ status: boolean; message: string }>(`/leads/${id}`, authToken, {
-        method: 'PUT',
-        body: JSON.stringify(fullUpdateData), // Send the complete required data
-    });
-}
-
-/**
- * Asynchronously deletes a lead via the proxy.
- *
- * @param authToken The authentication token.
- * @param id The unique identifier of the lead to delete.
- * @returns A promise that resolves to the success message from the API.
- */
-export async function deleteLead(authToken: string, id: string): Promise<{ status: boolean; message: string }> {
-    console.log("Deleting lead via proxy with ID:", id);
-    return fetchCrmApi<{ status: boolean; message: string }>(`/delete/leads/${id}`, authToken, {
-        method: 'DELETE',
-    });
 }
 
 // --- Helper Data (Keep as is) ---
 
 export const leadStatuses = [
-    { id: '1', name: 'New' },
+    { id: '1', name: 'New' }, // First possible status
     { id: '2', name: 'Contacted' },
     { id: '3', name: 'Qualified' },
     { id: '4', name: 'Proposal Sent' },
@@ -320,7 +128,200 @@ export const leadStatuses = [
     { id: '7', name: 'Lost' },
 ];
 
-// Default values used in addLead if not provided
-export const defaultSourceId = '5'; // 'Other'
-export const defaultStatusId = '1'; // 'New'
-export const defaultAssigneeId = '1'; // 'Admin User'
+// Default values based on assumed first possible option IDs from CRM setup
+export const defaultSourceId = '5'; // Assume '5' corresponds to 'Other' or a default source
+export const defaultStatusId = '1'; // Assume '1' corresponds to 'New' (first in our list)
+export const defaultAssigneeId = '1'; // Assume '1' corresponds to a default user (e.g., 'Admin User')
+
+
+// Helper function for making direct API requests
+async function fetchCrmApi<T>(
+  endpoint: string,
+  authToken: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`; // e.g., https://crm.borderiq.org/api/leads
+
+  const headers = {
+    'authtoken': authToken,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    ...options.headers,
+  };
+
+  // Log the request details for debugging
+  console.log(`Making API request to: ${options.method || 'GET'} ${url}`);
+  // Avoid logging the full token in production environments if possible
+  // console.log(`With Auth Token: ${authToken ? authToken.substring(0, 10) + '...' : 'None'}`);
+  if (options.body) {
+      // Be cautious about logging sensitive body data
+      // console.log(`With Body: ${options.body}`);
+  }
+
+
+  const response = await fetch(url, { ...options, headers });
+
+   // Log response status
+  console.log(`API Response Status: ${response.status}`);
+
+
+  // More detailed error handling
+  if (!response.ok) {
+    let errorData: any = { message: `API request failed with status ${response.status}` };
+    try {
+      const responseText = await response.text();
+      console.error("API Error Response Text:", responseText); // Log raw error response
+      errorData = JSON.parse(responseText); // Try parsing as JSON
+    } catch (e) {
+      // Parsing failed or not JSON, stick with status message
+      console.error("Failed to parse error response as JSON or non-JSON error:", e);
+    }
+    // Throw error with message from API if available
+    throw new Error(errorData?.message || `API request failed with status ${response.status}`);
+  }
+
+  // Handle potential non-JSON success responses or empty body
+    const responseText = await response.text();
+    if (!responseText) {
+        console.log("API returned successful status code but empty body.");
+        // Return an empty object or appropriate type based on expected response
+        // For DELETE/PUT that return success status only, this might be expected
+        if (options.method === 'DELETE' || options.method === 'PUT') {
+             return { status: true, message: 'Operation successful (No content)' } as T;
+        }
+        return {} as T;
+    }
+
+   try {
+     const data: any = JSON.parse(responseText); // Try parsing as JSON
+     console.log("API Success Response Data:", data);
+
+     // Check for explicit failure status within the JSON response body
+     // The CRM API seems to use `status: false` for logical failures
+     if (data.status === false) {
+        console.error("API operation indicated failure:", data.message);
+        throw new Error(data.message || 'API operation failed.');
+     }
+     return data as T;
+   } catch (e) {
+     // If parsing failed but status was OK, could be unexpected response format
+     console.error("Failed to parse successful response as JSON:", e);
+     console.error("Raw success response text:", responseText);
+     // If status was ok, but response wasn't JSON as expected
+     throw new Error("Received unexpected response format from API.");
+   }
+}
+
+/**
+ * Asynchronously adds a new lead to the BorderIQ CRM.
+ * Ensures default values for source, status, and assigned are included.
+ *
+ * @param authToken The authentication token.
+ * @param leadData The data for the new lead (only name and phonenumber needed from UI).
+ * @returns A promise that resolves to the API response.
+ */
+export async function addLead(authToken: string, leadData: CreateLeadData): Promise<{ status: boolean; message: string; id?: string }> {
+    console.log("Adding lead with data:", leadData);
+
+    // Create the full payload, ensuring compulsory fields have defaults
+    const fullLeadData: any = {
+        name: leadData.name,
+        phonenumber: leadData.phonenumber || undefined, // Send undefined if empty
+        source: leadData.source || defaultSourceId, // Use default if not provided
+        status: leadData.status || defaultStatusId, // Use default if not provided
+        assigned: leadData.assigned || defaultAssigneeId, // Use default if not provided
+    };
+
+    console.log("Sending lead data to API:", fullLeadData);
+
+    // Endpoint confirmed from working curl
+    return fetchCrmApi<{ status: boolean; message: string; id?: string }>(`/leads`, authToken, {
+        method: 'POST',
+        body: JSON.stringify(fullLeadData),
+    });
+}
+
+
+/**
+ * Asynchronously retrieves lead information.
+ *
+ * @param authToken The authentication token.
+ * @param id The unique identifier of the lead to retrieve.
+ * @returns A promise that resolves to a Lead object.
+ */
+export async function getLead(authToken: string, id: string): Promise<Lead> {
+    console.log("Retrieving lead with ID:", id);
+    return fetchCrmApi<Lead>(`/leads/${id}`, authToken, { method: 'GET' });
+}
+
+
+/**
+ * Asynchronously retrieves all leads.
+ * Endpoint confirmed from working curl command: `/leadsi/leads`.
+ *
+ * @param authToken The authentication token.
+ * @returns A promise that resolves to an array of Lead objects.
+ */
+export async function getAllLeads(authToken: string): Promise<Lead[]> {
+    console.log("Retrieving all leads.");
+    // Corrected endpoint based on working curl command
+    return fetchCrmApi<Lead[]>(`/leadsi/leads`, authToken, { method: 'GET' });
+}
+
+
+/**
+ * Asynchronously searches for leads.
+ *
+ * @param authToken The authentication token.
+ * @param keysearch The search keywords.
+ * @returns A promise that resolves to an array of Lead objects.
+ */
+export async function searchLeads(authToken: string, keysearch: string): Promise<Lead[]> {
+    console.log("Searching leads with keyword:", keysearch);
+    const encodedKeysearch = encodeURIComponent(keysearch);
+    // Assuming the search endpoint follows the pattern, adjust if needed
+    // Check CRM API docs for the exact search endpoint if `/leads/search/` doesn't work
+    return fetchCrmApi<Lead[]>(`/leads/search/${encodedKeysearch}`, authToken, { method: 'GET' });
+}
+
+
+/**
+ * Asynchronously updates a lead.
+ *
+ * @param authToken The authentication token.
+ * @param id The unique identifier of the lead to update.
+ * @param leadData The data to update for the lead (must include name, source, status, assigned).
+ * @returns A promise that resolves to the success/failure message from the API.
+ */
+export async function updateLead(authToken: string, id: string, leadData: UpdateLeadData): Promise<{ status: boolean; message: string }> {
+    console.log("Updating lead with ID:", id, "and data:", leadData);
+
+    // Ensure all mandatory fields for update are included in the payload sent
+    const fullUpdateData: UpdateLeadData = {
+        name: leadData.name,
+        phonenumber: leadData.phonenumber,
+        source: leadData.source, // Should come from existing lead data
+        status: leadData.status, // The new status selected by user
+        assigned: leadData.assigned, // Should come from existing lead data
+    };
+
+    return fetchCrmApi<{ status: boolean; message: string }>(`/leads/${id}`, authToken, {
+        method: 'PUT',
+        body: JSON.stringify(fullUpdateData),
+    });
+}
+
+/**
+ * Asynchronously deletes a lead.
+ * Endpoint confirmed from API structure: `/delete/leads/{id}`.
+ *
+ * @param authToken The authentication token.
+ * @param id The unique identifier of the lead to delete.
+ * @returns A promise that resolves to the success/failure message from the API.
+ */
+export async function deleteLead(authToken: string, id: string): Promise<{ status: boolean; message: string }> {
+    console.log("Deleting lead with ID:", id);
+    return fetchCrmApi<{ status: boolean; message: string }>(`/delete/leads/${id}`, authToken, {
+        method: 'DELETE',
+    });
+}
