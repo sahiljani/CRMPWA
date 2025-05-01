@@ -11,30 +11,38 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
+// Define the type for the simplified data received from the form
+type SimplifiedLeadData = {
+    name: string;
+    phonenumber?: string;
+};
 
 export default function AddLeadPage() {
   const { authToken } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting = useState(false);
 
-  const handleSubmit = async (data: CreateLeadData) => {
+  const handleSubmit = async (data: SimplifiedLeadData) => {
     if (!authToken) {
         toast({ variant: "destructive", title: "Authentication Error", description: "You are not logged in." });
         return;
     };
     setIsSubmitting(true);
 
+    // --- Provide default values for mandatory fields not in the form ---
+    const payload: CreateLeadData = {
+      name: data.name,
+      phonenumber: data.phonenumber || undefined, // Send undefined if empty
+      source: '5', // Default source: 'Other'
+      status: '1', // Default status: 'New'
+      assigned: '1', // Default assignee: 'Admin User'
+      // Other optional fields can be added here if needed
+    };
+    // --- End of default values section ---
+
+
     try {
-      // Filter out empty optional fields before sending to API, if necessary
-       const payload: CreateLeadData = Object.entries(data).reduce((acc, [key, value]) => {
-            if (value !== '' && value !== undefined && value !== null) {
-                acc[key as keyof CreateLeadData] = value;
-            }
-            return acc;
-        }, {} as CreateLeadData);
-
-
       await addLead(authToken, payload);
       toast({
         title: "Lead Created",
@@ -56,7 +64,7 @@ export default function AddLeadPage() {
 
   return (
     <div className="flex flex-col gap-6">
-       <div className="flex items-center gap-4">
+       <div className="flex items-center gap-4 mb-4"> {/* Added margin-bottom */}
             <Link href="/leads" passHref legacyBehavior>
                 <Button variant="outline" size="icon" className="h-8 w-8 rounded-full">
                     <ArrowLeft className="h-4 w-4" />

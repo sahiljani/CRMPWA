@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { ReactNode } from 'react';
@@ -29,7 +28,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col min-h-screen">
         {/* Main content takes up available space, with padding at the bottom to avoid overlapping with BottomNav */}
-        <main className="flex-1 p-4 md:p-6 lg:p-8 pb-20"> {/* Added pb-20 for bottom nav space */}
+        <main className="flex-1 p-4 md:p-6 lg:p-8 pb-24"> {/* Increased pb-24 for larger bottom nav space */}
           {children}
         </main>
         {/* Bottom navigation */}

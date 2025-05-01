@@ -11,15 +11,20 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
+// Define the type for the simplified data received from the form
+type SimplifiedLeadData = {
+    name: string;
+    phonenumber?: string;
+};
 
 export default function EditLeadPage() {
   const { authToken } = useAuth();
   const router = useRouter();
   const params = useParams();
   const { toast } = useToast();
-  const [lead, setLead] = useState<Lead | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lead, setLead = useState<Lead | null>(null);
+  const [isLoading, setIsLoading = useState(true);
+  const [isSubmitting, setIsSubmitting = useState(false);
 
   const leadId = params.id as string; // Get lead ID from route params
 
@@ -47,23 +52,35 @@ export default function EditLeadPage() {
     fetchLeadData();
   }, [authToken, leadId, toast, router]);
 
-  const handleSubmit = async (data: UpdateLeadData) => {
-    if (!authToken || !leadId) return;
+  const handleSubmit = async (data: SimplifiedLeadData) => {
+    if (!authToken || !leadId || !lead) {
+        toast({ variant: "destructive", title: "Error", description: "Cannot update lead data." });
+        return;
+    };
     setIsSubmitting(true);
 
     try {
-        // Filter out empty optional fields if needed by API
-         const payload: UpdateLeadData = Object.entries(data).reduce((acc, [key, value]) => {
-            if (value !== '' && value !== undefined && value !== null) {
+        // Merge the updated fields (name, phonenumber) with the existing lead data
+        const fullUpdateData: UpdateLeadData = {
+            ...lead, // Spread existing lead data
+            name: data.name, // Update name
+            phonenumber: data.phonenumber || undefined, // Update phone number (or set to undefined if empty)
+            // Ensure mandatory fields are present (they should be from the fetched lead)
+            source: lead.source || '5', // Fallback if somehow missing
+            status: lead.status || '1', // Fallback if somehow missing
+            assigned: lead.assigned || '1', // Fallback if somehow missing
+        };
+
+         // Filter out empty optional fields if needed by API, but keep required ones
+         const payload: UpdateLeadData = Object.entries(fullUpdateData).reduce((acc, [key, value]) => {
+            // Keep mandatory fields even if potentially empty (API should handle validation)
+            const mandatoryFields = ['name', 'source', 'status', 'assigned'];
+            if (mandatoryFields.includes(key) || (value !== '' && value !== undefined && value !== null)) {
                 acc[key as keyof UpdateLeadData] = value;
             }
             return acc;
         }, {} as UpdateLeadData);
 
-        // Ensure required fields are present (redundant if form validation works, but good practice)
-        if (!payload.name || !payload.source || !payload.status || !payload.assigned) {
-            throw new Error("Required fields are missing.");
-        }
 
       await updateLead(authToken, leadId, payload);
       toast({
@@ -108,7 +125,7 @@ export default function EditLeadPage() {
 
   return (
     <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 mb-4"> {/* Added margin-bottom */}
             <Link href="/leads" passHref legacyBehavior>
                 <Button variant="outline" size="icon" className="h-8 w-8 rounded-full">
                     <ArrowLeft className="h-4 w-4" />
@@ -126,3 +143,4 @@ export default function EditLeadPage() {
     </div>
   );
 }
+
